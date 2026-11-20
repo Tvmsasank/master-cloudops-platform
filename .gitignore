@@ -1,0 +1,33 @@
+﻿# Dependencies
+node_modules/
+.pnpm-store/
+
+# Production build output
+dist/
+build/
+
+# Environment files and secrets (CRITICAL FOR DEVOPS SECURITY)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+id_rsa*
+*.id_rsa
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Database dumps (never commit raw data backups to git)
+*.sql
+*.dump
+*.tar.gz

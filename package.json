@@ -1,0 +1,29 @@
+{
+  "name": "cloudops-platform",
+  "version": "1.0.0",
+  "description": "Production CloudOps platform microservice",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts"
+  },
+  "keywords": [
+    "devops",
+    "cloudops",
+    "aws",
+    "docker",
+    "caddy",
+    "postgresql"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@fastify/cors": "^11.4.3",
+    "@types/node": "^26.6.6",
+    "dotenv": "^18.0.10",
+    "fastify": "^5.12.8",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
