@@ -1,6 +1,5 @@
 ﻿import dotenv from "dotenv";
 
-// Load environment variables from .env
 dotenv.config();
 
 export const config = {
@@ -9,4 +8,5 @@ export const config = {
   nodeEnv: process.env.NODE_ENV || "development",
   serviceName: process.env.SERVICE_NAME || "cloudops-api",
   serviceVersion: process.env.SERVICE_VERSION || "1.0.0",
+  databaseUrl: process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/cloudops_db",
 };

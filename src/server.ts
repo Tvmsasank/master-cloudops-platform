@@ -1,6 +1,7 @@
 ﻿import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { config } from "./config";
+import { pool, checkDatabaseHealth } from "./db";
 
 const app = Fastify({
   logger: {
@@ -8,42 +9,28 @@ const app = Fastify({
   },
 });
 
-// Enable CORS
 app.register(cors, {
   origin: true,
 });
 
-// In-memory data store (will be migrated to PostgreSQL in Step 2)
-interface WorkItem {
-  id: string;
-  title: string;
-  category: string;
-  createdAt: string;
-}
-
-const items: WorkItem[] = [
-  {
-    id: "1",
-    title: "Verify zero secret leakage in git repository",
-    category: "Security",
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "2",
-    title: "Setup Docker and PostgreSQL container",
-    category: "DevOps",
-    createdAt: new Date().toISOString(),
-  },
-];
-
-// Production Health Check Endpoint (used by Kubernetes/ECS/ALB/Caddy)
+// Production Health & Readiness Check Endpoint
 app.get("/health", async (_request, reply) => {
-  return reply.status(200).send({
-    status: "ok",
+  const dbHealth = await checkDatabaseHealth();
+  const isHealthy = dbHealth.ok;
+
+  const payload = {
+    status: isHealthy ? "ok" : "degraded",
     service: config.serviceName,
     uptimeSeconds: Math.floor(process.uptime()),
+    database: {
+      status: isHealthy ? "connected" : "disconnected",
+      latencyMs: dbHealth.latencyMs,
+      error: dbHealth.error,
+    },
     timestamp: new Date().toISOString(),
-  });
+  };
+
+  return reply.status(isHealthy ? 200 : 503).send(payload);
 });
 
 // Service Metadata Endpoint
@@ -56,31 +43,43 @@ app.get("/api/v1/info", async (_request, reply) => {
   });
 });
 
-// List items
+// List items from PostgreSQL database
 app.get("/api/v1/items", async (_request, reply) => {
-  return reply.status(200).send({
-    count: items.length,
-    items,
-  });
-});
-
-// Create item
-app.post<{ Body: { title?: string; category?: string } }>("/api/v1/items", async (request, reply) => {
-  const { title, category } = request.body || {};
-  if (!title) {
-    return reply.status(400).send({ error: "Field 'title' is required" });
+  try {
+    const result = await pool.query(
+      "SELECT id, title, category, status, created_at, updated_at FROM work_items ORDER BY id ASC"
+    );
+    return reply.status(200).send({
+      count: result.rowCount,
+      items: result.rows,
+    });
+  } catch (err: any) {
+    app.log.error(err, "Failed to fetch work items");
+    return reply.status(500).send({ error: "Database query failed", details: err.message });
   }
-
-  const newItem: WorkItem = {
-    id: String(items.length + 1),
-    title,
-    category: category || "General",
-    createdAt: new Date().toISOString(),
-  };
-
-  items.push(newItem);
-  return reply.status(201).send(newItem);
 });
+
+// Create item in PostgreSQL database
+app.post<{ Body: { title?: string; category?: string; status?: string } }>(
+  "/api/v1/items",
+  async (request, reply) => {
+    const { title, category, status } = request.body || {};
+    if (!title) {
+      return reply.status(400).send({ error: "Field 'title' is required" });
+    }
+
+    try {
+      const result = await pool.query(
+        "INSERT INTO work_items (title, category, status) VALUES ($1, $2, $3) RETURNING id, title, category, status, created_at, updated_at",
+        [title, category || "General", status || "PENDING"]
+      );
+      return reply.status(201).send(result.rows[0]);
+    } catch (err: any) {
+      app.log.error(err, "Failed to insert work item");
+      return reply.status(500).send({ error: "Failed to persist work item", details: err.message });
+    }
+  }
+);
 
 // Start server
 const start = async () => {
@@ -93,14 +92,15 @@ const start = async () => {
   }
 };
 
-// Graceful shutdown handling (critical for Linux systemd and Docker containers)
+// Graceful shutdown handling
 const signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
 for (const signal of signals) {
   process.on(signal, async () => {
     app.log.info(`Received ${signal}. Shutting down gracefully...`);
     try {
       await app.close();
-      app.log.info("Server closed successfully.");
+      await pool.end();
+      app.log.info("Server and database pool closed successfully.");
       process.exit(0);
     } catch (err) {
       app.log.error(`Error during graceful shutdown: ${err}`);

@@ -28,6 +28,9 @@ Thumbs.db
 .idea/
 
 # Database dumps (never commit raw data backups to git)
-*.sql
+backups/
 *.dump
 *.tar.gz
+*.sql
+!docker/**/*.sql
+!migrations/**/*.sql
